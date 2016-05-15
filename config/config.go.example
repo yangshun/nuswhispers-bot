@@ -4,4 +4,5 @@ const (
   TelegramBotAPI = "https://api.telegram.org/bot"
   TelegramBotToken = ""
   TelegramBotUrl = TelegramBotAPI + TelegramBotToken
+  NUSWhispersAPI = "http://www.nuswhispers.com/api"
 )
