@@ -2,37 +2,75 @@ package main
 
 import (
   "fmt"
-  "os"
   "net/http"
   "io/ioutil"
   "encoding/json"
+  "time"
+  "strconv"
+  "./config"
 )
 
-type config struct {
-  TelegramBotAPI string
-  TelegramBotToken string
+type Chat struct {
+  Id int `json:"id"`
+}
+
+type Message struct {
+  Id int `json:"message_id"`
+  Text string `json:"text"`
+  Chat Chat `json:"chat"`
+}
+
+type Update struct {
+  Id int `json:"update_id"`
+  Message Message `json:"message"`
+}
+
+type GetUpdates struct {
+  Ok bool `json:"ok"`
+  UpdateList []Update `json:"result"`
+}
+
+func getUpdates(body []byte) (*GetUpdates, error) {
+  var s = new(GetUpdates)
+  err := json.Unmarshal(body, &s)
+  if err != nil {
+    fmt.Printf("%s", err)
+  }
+  return s, err
 }
 
 func main() {
-  file, e := ioutil.ReadFile("./config.json")
-  if e != nil {
-    fmt.Printf("File error: %v\n", e)
-    os.Exit(1)
-  }
-  fmt.Printf("%s\n", string(file))
+  ticker := time.NewTicker(time.Millisecond * 1000)
 
-  var appConfig config
-  json.Unmarshal(file, &appConfig)
+  lastOffset := 0
 
-  response, err := http.Get(appConfig.TelegramBotAPI + appConfig.TelegramBotToken + "/getUpdates")
-  if err != nil {
-    fmt.Printf("%s", err)
-  } else {
-    defer response.Body.Close()
-    contents, err := ioutil.ReadAll(response.Body)
+  for {
+    fmt.Println("Getting updates...")
+    getUpdatesUrl := config.TelegramBotUrl + "/getUpdates?offset=" + strconv.Itoa(lastOffset + 1)
+    fmt.Println(getUpdatesUrl)
+    response, err := http.Get(getUpdatesUrl)
     if err != nil {
       fmt.Printf("%s", err)
+    } else {
+      defer response.Body.Close()
+      body, err := ioutil.ReadAll(response.Body)
+      if err != nil {
+        fmt.Printf("%s", err)
+      }
+
+      getUpdatesData, err := getUpdates([]byte(body))
+      updateList := getUpdatesData.UpdateList
+      if len(updateList) > 0 {
+        lastOffset = updateList[len(updateList) - 1].Id
+      }
+      for _, update := range updateList {
+        processUpdate(update)
+      }
     }
-    fmt.Printf("%s\n", string(contents))
+    <-ticker.C
   }
+}
+
+func processUpdate(update Update) {
+  fmt.Println("Update id:", update.Id)
 }

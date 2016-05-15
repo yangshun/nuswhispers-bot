@@ -24,4 +24,4 @@ _testmain.go
 *.prof
 
 index
-config.json
+config.go
