@@ -3,6 +3,7 @@ package main
 import (
   "fmt"
   "net/http"
+  "net/url"
   "io/ioutil"
   "encoding/json"
   "time"
@@ -33,6 +34,7 @@ type GetUpdates struct {
 
 type Confession struct {
   Content string `json:"content"`
+  Id string `json:"confession_id"`
 }
 
 type ConfessionData struct {
@@ -42,6 +44,14 @@ type ConfessionData struct {
 type GetConfession struct {
   Success bool `json:"success"`
   Data ConfessionData `json:"data"`
+}
+
+type ConfessionsData struct {
+  ConfessionList []Confession `json:"confessions"`
+}
+
+type GetRecentConfessions struct {
+  Data ConfessionsData `json:"data"`
 }
 
 func getUpdates(body []byte) (*GetUpdates) {
@@ -59,9 +69,8 @@ func main() {
   lastOffset := 0
 
   for {
-    fmt.Println("Getting updates...")
+    fmt.Println("Getting updates for offset: " + strconv.Itoa(lastOffset + 1))
     getUpdatesUrl := config.TelegramBotUrl + "/getUpdates?offset=" + strconv.Itoa(lastOffset + 1)
-    fmt.Println(getUpdatesUrl)
     response, err := http.Get(getUpdatesUrl)
     if err != nil {
       fmt.Printf("%s", err)
@@ -95,17 +104,18 @@ func processUpdate(update Update) {
   messageSegments := strings.Split(text, " ")
   command := messageSegments[0]
 
-  reply := ""
+  chatId := update.Message.Chat.Id
+
   switch command {
   case "/start":
-    reply = "- Get a confession: `/id <confession id>`%0A" +
-            "- Subscribe to confessions: `/subscribe <frequency in hours>`%0A"
+    sendMessage(chatId, "- Get a confession: `/id <confession id>`\n" +
+                        "- Recent confessions (max 5): `/recent <count>`\n")
   case "/id":
     if len(messageSegments) != 2 {
-      reply = "Error understanding the command. Please use the structure: `/id <confession id>`"
+      sendMessage(chatId, "Error understanding the command. Please use the structure: `/id <confession id>`")
     } else {
       confessionId := messageSegments[1]
-      if len(confessionId) > 1 {
+      if len(confessionId) > 0 {
         response, err := http.Get(config.NUSWhispersAPI + "/confessions/" + confessionId)
         if err != nil {
           fmt.Printf("%s", err)
@@ -121,18 +131,79 @@ func processUpdate(update Update) {
           if error != nil {
             fmt.Printf("%s", error)
           }
-          reply = getConfessionData.Data.Confession.Content
-          fmt.Println(reply)
+          if getConfessionData.Success {
+            sendMessage(chatId, getConfessionData.Data.Confession.Content)
+          } else {
+            sendMessage(chatId, "Oops, confession not found!")
+          }
         }
       }
+    }
+  case "/recent":
+    number := "5"
+    if len(messageSegments) > 1 {
+      number = messageSegments[1]
+    }
+    response, err := http.Get(config.NUSWhispersAPI + "/confessions/recent?count=" + number)
+    if err != nil {
+      fmt.Printf("%s", err)
+    } else {
+      defer response.Body.Close()
+      body, err := ioutil.ReadAll(response.Body)
+      if err != nil {
+        fmt.Printf("%s", err)
+      }
+
+      var getRecentConfessionsData = new(GetRecentConfessions)
+      error := json.Unmarshal([]byte(body), &getRecentConfessionsData)
+      if error != nil {
+        fmt.Printf("%s", error)
+      }
+
+      message := ""
+      for index, confession := range getRecentConfessionsData.Data.ConfessionList {
+        if index != 0 {
+          message = "\n\n-----\n\n" + message
+        }
+        sliceLimit := 800
+        content := confession.Content
+        if len(confession.Content) > 800 {
+          content = content[:sliceLimit] + "..."
+        }
+        message = "*#" + confession.Id + "*: http://www.nuswhispers.com/confession/" +
+                    confession.Id + "\n\n" + content + message
+
+      }
+      sendMessage(chatId, message)
     }
   default:
     return
   }
-  sendMessageUrl := config.TelegramBotUrl +
-                      "/sendMessage?" +
-                      "chat_id=" + strconv.Itoa(update.Message.Chat.Id) + "&" +
-                      "text=" + reply + "&" +
-                      "parse_mode=" + "Markdown"
-  http.Get(sendMessageUrl)
+}
+
+// type BotMessage struct {
+//   ChatId string
+//   Text string
+//   ParseModeode
+// }
+
+func sendMessage(chatId int, message string) {
+
+  urlData := make(url.Values)
+  urlData.Set("chat_id", strconv.Itoa(chatId))
+  urlData.Set("text", message)
+  urlData.Set("parse_mode", "Markdown")
+  urlData.Set("disable_web_page_preview", "true")
+
+  sendMessageUrl := config.TelegramBotUrl + "/sendMessage"
+  response, err := http.PostForm(sendMessageUrl, urlData)
+  fmt.Println("Status: ", response.Status)
+  if response.Status != "200 OK" {
+    urlData.Set("text", "Sorry the request failed with: " + response.Status)
+    http.PostForm(sendMessageUrl, urlData)
+  }
+
+  if err != nil {
+    fmt.Println(err)
+  }
 }
