@@ -165,9 +165,9 @@ func processUpdate(update Update) {
         if index != 0 {
           message = "\n\n-----\n\n" + message
         }
-        sliceLimit := 800
+        const contentLimit = 800
         content := confession.Content
-        if len(confession.Content) > 800 {
+        if len(confession.Content) > contentLimit {
           content = content[:sliceLimit] + "..."
         }
         message = "*#" + confession.Id + "*: http://www.nuswhispers.com/confession/" +
@@ -180,12 +180,6 @@ func processUpdate(update Update) {
     return
   }
 }
-
-// type BotMessage struct {
-//   ChatId string
-//   Text string
-//   ParseModeode
-// }
 
 func sendMessage(chatId int, message string) {
 
