@@ -168,7 +168,7 @@ func processUpdate(update Update) {
         const contentLimit = 800
         content := confession.Content
         if len(confession.Content) > contentLimit {
-          content = content[:sliceLimit] + "..."
+          content = content[:contentLimit] + "..."
         }
         message = "*#" + confession.Id + "*: http://www.nuswhispers.com/confession/" +
                     confession.Id + "\n\n" + content + message
